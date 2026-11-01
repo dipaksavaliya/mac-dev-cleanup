@@ -33,5 +33,6 @@ echo "CLEAR THESE YOURSELF (close the IDE/browser first):"
 if ps -Ao command | grep -qE '[G]radleWrapperMain|[f]lutter (build|run|test)|[x]codebuild'; then
   echo "  !! a build is RUNNING: wait for it before clearing build caches"
 fi
-du -sh "$HOME/.gradle/caches" "$HOME/Library/Developer/Xcode/DerivedData" "$HOME/Library/Caches/Google" 2>/dev/null | sed 's/^/  /'
-echo '  -> rm -rf ~/.gradle/caches ~/Library/Developer/Xcode/DerivedData ~/Library/Caches/Google'
+du -sh "$HOME/.gradle/caches" "$HOME/Library/Caches/Google" 2>/dev/null | sed 's/^/  /'
+echo '  -> rm -rf ~/.gradle/caches ~/Library/Caches/Google'
+command -v xcrun >/dev/null && echo "  iOS/Xcode caches: run scripts/ios-clean.sh (report) then --apply"

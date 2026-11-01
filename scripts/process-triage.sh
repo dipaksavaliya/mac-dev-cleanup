@@ -35,6 +35,14 @@ for P in $(pgrep -f GradleDaemon); do
 done
 pgrep -f GradleDaemon >/dev/null || echo "  none"
 echo
+echo "== XCODE / SIMULATORS =="
+if command -v xcrun >/dev/null && xcode-select -p >/dev/null 2>&1; then
+  B=$(xcrun simctl list devices booted 2>/dev/null | grep -c Booted)
+  echo "  booted simulators: $B  (each holds 1-2 GB; 'xcrun simctl shutdown all' frees them)"
+  ps -axo rss=,comm= | awk '{n=$2; sub(".*/","",n)} n ~ /^(Xcode|SourceKitService|XCBBuildService|swift-frontend|lldb-rpc-server|Simulator|launchd_sim|IBAgent-iOS)$/ {r[n]+=$1; c[n]++} END{for (k in r) printf "  %-18s x%-3d %6.0f MB\n", k, c[k], r[k]/1024}'
+  echo "  (SourceKitService over ~2 GB is a known leak: quitting Xcode releases it)"
+else echo "  Xcode not installed"; fi
+echo
 echo "== CHATGPT CODEX helper backlog =="
 R=$(pgrep -f 'codex.*app-server' | head -1)
 if [ -n "$R" ]; then echo "  app-server pid $R running -> run scripts/reap-codex-helpers.py (dry run) to count idle helpers"

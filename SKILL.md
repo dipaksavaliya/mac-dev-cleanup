@@ -1,16 +1,16 @@
 ---
 name: cleanup
-description: Free disk space, RAM, and CPU on a Mac used for development: safe cache cleanup, AI-agent worktree sweep that rescues unmerged work, memory-hog and runaway triage (Gradle daemons, idle Docker/Colima VM, leaked ChatGPT Codex helpers), and zombie/orphan process cleanup. Use when the user says cleanup, disk full, storage full, low space, system slow or lagging, RAM/CPU cleanup, kill zombie processes, or asks to free space or speed up the machine.
+description: Free disk space, RAM, and CPU on a Mac used for development: safe cache cleanup, iOS/Xcode build and simulator cleanup, AI-agent worktree sweep that rescues unmerged work, memory-hog and runaway triage (Gradle daemons, idle Docker/Colima VM, leaked ChatGPT Codex helpers), and zombie/orphan process cleanup. Use when the user says cleanup, disk full, storage full, low space, system slow or lagging, RAM/CPU cleanup, kill zombie processes, or asks to free space or speed up the machine.
 ---
 
 # Mac Dev-Machine Cleanup
 
 A safe, repeatable routine for freeing **storage and RAM** on a macOS developer machine
-(Apple Silicon or Intel). It works two ways:
+(Apple Silicon or Intel), including iOS/Xcode setups. It works two ways:
 
 - **As a Claude Code skill**: `git clone https://github.com/dipaksavaliya/mac-dev-cleanup ~/.claude/skills/cleanup`,
   then type `/cleanup`. (Or save just this file as `~/.claude/skills/cleanup/SKILL.md`; on first use the
-  agent saves the four scripts at the bottom into `scripts/` next to it.)
+  agent saves the five scripts at the bottom into `scripts/` next to it.)
 - **By hand**: read the phases, save the scripts, run them yourself.
 
 The guiding rule: **only remove things that rebuild themselves** (package caches, build output,
@@ -55,11 +55,30 @@ uv (prune), npm, pnpm (prune), bun, pip, Homebrew, Docker build cache, and trims
 (`fstrim`, which deletes nothing and returns freed VM blocks to macOS, often 1–3 GB).
 
 It then **prints** (never runs) the big caches you should clear yourself, because a
-running IDE/build may be using them: Gradle caches, Xcode DerivedData, Chrome's cache.
+running IDE/browser may be using them: Gradle caches and Chrome's cache.
 
 `uv cache clean` (full, not prune) only on a "deep" request. Long-running `uvx` servers hold
 its lock; killing them first (`pkill -f 'uv tool uvx'`) works but stops those MCP servers until
 their apps restart.
+
+## Phase 1b: iOS / Xcode (when Xcode is installed)
+
+Xcode is often the single biggest disk user on a Mac (tens of GB). Run `scripts/ios-clean.sh`
+(report only), show the user the totals, ask once, then `scripts/ios-clean.sh --apply`.
+
+| Tier | Item | Notes |
+|---|---|---|
+| SAFE (`--apply`) | `~/Library/Developer/Xcode/DerivedData` | Build products + index. Next build is a full rebuild. Skipped while Xcode is open or a build runs |
+| SAFE | Xcode caches, SwiftUI preview simulators | Skipped while Xcode is open |
+| SAFE | `CoreSimulator/Caches` | Simulator dyld caches. Skipped while a simulator is booted |
+| SAFE | Old `iOS/watchOS/tvOS DeviceSupport` | Keeps the most recently used version per platform; rebuilt when a device reconnects |
+| SAFE | Unavailable simulators | `xcrun simctl delete unavailable` (their runtime is gone; they can't boot) |
+| SAFE | CocoaPods, SwiftPM, Carthage download caches; React Native Metro/Haste caches | SwiftPM: only `~/Library/Caches/org.swift.swiftpm`, never `~/Library/org.swift.swiftpm` (config + security fingerprints) |
+| ASK | `Xcode/Archives` | Needed to symbolicate crash reports. Delete old ones in Xcode > Organizer only after their dSYMs are uploaded |
+| ASK | Simulator runtimes | `xcrun simctl runtime delete <id>` for versions nobody targets; Xcode > Settings > Components re-downloads |
+| ASK | All simulator devices | `xcrun simctl erase all` wipes every simulator's apps and data |
+| ASK | Extra `/Applications/Xcode*.app` | 10+ GB each; move unused versions to the Trash |
+| NEVER | `~/Library/Application Support/MobileSync/Backup` | iPhone/iPad backups: user data, managed only in Finder |
 
 ## Phase 2: AI-agent worktrees
 
@@ -105,15 +124,17 @@ Run `scripts/process-triage.sh` (report only), then act per finding:
 - **Leaked ChatGPT Codex helpers** (the desktop app's app-server starts helper processes per
   thread and doesn't reap them; 40+ idle helpers seen): ask, then `scripts/reap-codex-helpers.py`
   (dry run), then `--kill`. It only touches helpers idle for more than 60 min and never an active task.
+- **Booted simulators** hold 1–2 GB each: `xcrun simctl shutdown all` (ask if a test run may be using them).
+  **SourceKitService** over ~2 GB is a known leak; quitting and reopening Xcode releases it.
 - **Zombies** can't be killed; if more than 5 share a parent, offer to restart that app.
 - **Orphans** (dev processes whose cwd was deleted): kill them (TERM, then KILL after 5 s) and list what was killed.
 - **User apps** (browsers, chat apps, Electron): report their totals, but never quit one without asking.
 
 ## Deep options (only on request)
 
-- **Stale project dependencies**: delete `node_modules` / `.venv` only in projects idle 14+ days
+- **Stale project dependencies**: delete `node_modules` / `.venv` / `ios/Pods` only in projects idle 14+ days
   (no commits, no edits, no running process inside) that have a lockfile. Write each reinstall
-  command (`pnpm install`, `uv sync`, …) to a notes file first.
+  command (`pnpm install`, `uv sync`, `pod install`, …) to a notes file first.
 - **Docker images**: remove only images no container uses (list them explicitly), then
   `colima ssh -- sudo fstrim -a`. Judge the gain with `docker system df` before/after (layers are shared).
 - **Old app support folders**: `~/Library/Application Support` is often the biggest hog
@@ -123,7 +144,8 @@ Run `scripts/process-triage.sh` (report only), then act per finding:
 ## Hard rules
 
 - Never hard-delete user data: it goes to `~/.Trash`, and the user empties it.
-- Never `rm` Gradle/Xcode/browser caches for the user: print the command and let them run it.
+- Never `rm` Gradle/browser caches for the user: print the command and let them run it.
+- Never delete Xcode Archives, simulator app data, or iPhone backups without the user's explicit OK.
 - Never delete project `node_modules`/`.venv`, Downloads, or Documents except as the deep option above.
 - Never kill in-flight builds, processes inside LIVE worktrees, or user-facing apps.
 - Root-owned leftovers (from old `sudo npm`/`sudo` installs): give the user a one-line `sudo`
@@ -135,7 +157,8 @@ Run `scripts/process-triage.sh` (report only), then act per finding:
 ## Scripts
 
 Save each script to `scripts/` next to this file and `chmod +x scripts/*`. All of them are read-only
-except `disk-batch.sh` (caches only) and `reap-codex-helpers.py --kill`.
+except `disk-batch.sh` (caches only), `ios-clean.sh --apply` (rebuildable Xcode caches only)
+and `reap-codex-helpers.py --kill`.
 
 ### scripts/disk-batch.sh
 
@@ -175,8 +198,88 @@ echo "CLEAR THESE YOURSELF (close the IDE/browser first):"
 if ps -Ao command | grep -qE '[G]radleWrapperMain|[f]lutter (build|run|test)|[x]codebuild'; then
   echo "  !! a build is RUNNING: wait for it before clearing build caches"
 fi
-du -sh "$HOME/.gradle/caches" "$HOME/Library/Developer/Xcode/DerivedData" "$HOME/Library/Caches/Google" 2>/dev/null | sed 's/^/  /'
-echo '  -> rm -rf ~/.gradle/caches ~/Library/Developer/Xcode/DerivedData ~/Library/Caches/Google'
+du -sh "$HOME/.gradle/caches" "$HOME/Library/Caches/Google" 2>/dev/null | sed 's/^/  /'
+echo '  -> rm -rf ~/.gradle/caches ~/Library/Caches/Google'
+command -v xcrun >/dev/null && echo "  iOS/Xcode caches: run scripts/ios-clean.sh (report) then --apply"
+```
+
+### scripts/ios-clean.sh
+
+```zsh
+#!/bin/zsh
+# ios-clean.sh [--apply]: Xcode, iOS simulator, CocoaPods, SwiftPM, Carthage and React Native caches.
+# Default: report sizes only. --apply: remove the SAFE tier (everything in it rebuilds itself).
+# Never touches Archives (needed to symbolicate crash reports), simulator app data, or device backups.
+set -u
+setopt null_glob
+APPLY=0; [ "${1:-}" = "--apply" ] && APPLY=1
+D="$HOME/Library/Developer"
+TMP="${TMPDIR:-/tmp}"
+sz() { [ $# -eq 0 ] && { printf "%7.1f MB" 0; return; }; du -sk "$@" 2>/dev/null | awk '{s+=$1} END{printf "%7.1f MB", s/1024}'; }
+safe() {  # safe <label> <skip-reason-or-empty> <paths...>
+  local label=$1 why=$2; shift 2
+  local s=$(sz "$@")
+  if [ $# -eq 0 ]; then echo "  -     $s  $label (nothing there)"
+  elif [ -n "$why" ]; then echo "  SKIP  $s  $label ($why)"
+  elif [ $APPLY = 1 ]; then rm -rf "$@"; echo "  DONE  $s  $label"
+  else echo "  SAFE  $s  $label"; fi
+}
+
+if ! command -v xcrun >/dev/null || ! xcode-select -p >/dev/null 2>&1; then
+  echo "Xcode command line tools not found: nothing to clean."; exit 0
+fi
+FREE0=$(df -k / | tail -1 | awk '{print $4}')
+BUILDING=""; ps -Ao command | grep -qE '[x]codebuild|[s]wift-frontend' && BUILDING="a build is running"
+XCODE=""; pgrep -x Xcode >/dev/null && XCODE="Xcode is open: quit it first"
+BOOTED=$(xcrun simctl list devices booted 2>/dev/null | grep -c Booted)
+SIM=""; [ "$BOOTED" -gt 0 ] && SIM="$BOOTED simulator(s) booted: run 'xcrun simctl shutdown all' first"
+METRO=""; pgrep -f '[m]etro|react-native start|expo start' >/dev/null && METRO="Metro bundler running"
+
+echo "== SAFE tier (rebuilds itself) $([ $APPLY = 1 ] && echo '— applying' || echo '— report only, re-run with --apply') =="
+safe "Xcode DerivedData (build products + index; next build is a full rebuild)" "${BUILDING:-$XCODE}" "$D"/Xcode/DerivedData/*(ND)
+safe "Xcode caches" "$XCODE" "$HOME/Library/Caches/com.apple.dt.Xcode"(N)
+safe "SwiftUI preview simulators" "$XCODE" "$D"/Xcode/UserData/Previews(N)
+safe "Simulator dyld caches" "$SIM" "$D"/CoreSimulator/Caches/*(ND)
+
+# Old device support: keep the most recently used OS version per platform (rebuilt when a device reconnects)
+OLD=()
+for P in "$D"/Xcode/*OS\ DeviceSupport(N/); do
+  V=("$P"/*(N/om)); OLD+=("${V[@]:1}")
+done
+safe "Old iOS/watchOS/tvOS DeviceSupport (newest kept)" "" "${OLD[@]}"
+
+# Simulators whose runtime is gone; simctl removes them and their data folders
+UNAV=(${(f)"$(xcrun simctl list devices unavailable 2>/dev/null | grep -oE '[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}')"})
+UDIRS=(); for U in "${UNAV[@]}"; do [ -d "$D/CoreSimulator/Devices/$U" ] && UDIRS+=("$D/CoreSimulator/Devices/$U"); done
+if [ ${#UNAV} -eq 0 ]; then echo "  -     $(sz)  Unavailable simulators (none)"
+elif [ $APPLY = 1 ]; then xcrun simctl delete unavailable && echo "  DONE  $(sz "${UDIRS[@]}")  ${#UNAV} unavailable simulators"
+else echo "  SAFE  $(sz "${UDIRS[@]}")  ${#UNAV} unavailable simulators (xcrun simctl delete unavailable)"; fi
+
+safe "CocoaPods download cache" "" "$HOME/Library/Caches/CocoaPods"(N)
+# Only the cache: ~/Library/org.swift.swiftpm holds package-collection config and security fingerprints
+safe "SwiftPM cache" "$BUILDING" "$HOME/Library/Caches/org.swift.swiftpm"(N)
+safe "Carthage cache" "" "$HOME/Library/Caches/org.carthage.CarthageKit"(N)
+safe "React Native Metro/Haste caches" "$METRO" "$TMP"/metro-*(N) "$TMP"/haste-map-*(N)
+
+echo
+echo "== ASK FIRST (not removed by --apply) =="
+A=("$D"/Xcode/Archives/*/*.xcarchive(N))
+echo "  $(sz "$D"/Xcode/Archives(N))  ${#A} Xcode archives: delete old ones in Xcode > Window > Organizer, only after their dSYMs are uploaded"
+echo "  $(sz "$D"/CoreSimulator/Devices(N))  all simulator devices: 'xcrun simctl erase all' wipes every simulator's apps and data"
+RT=$(xcrun simctl runtime list 2>/dev/null | grep -E '[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}')
+if [ -n "$RT" ]; then
+  echo "  simulator runtimes (remove unused ones with 'xcrun simctl runtime delete <id>'; Xcode > Settings > Components re-downloads):"
+  print -r -- "$RT" | sed 's/^/      /'
+else echo "  simulator runtimes: none installed as disk images"; fi
+XS=(/Applications/Xcode*.app(N/))
+(( ${#XS} > 1 )) && echo "  ${#XS} Xcode versions installed: ${XS[*]:t} (each 10+ GB; move unused ones to the Trash)"
+echo
+echo "== NEVER (user data) =="
+echo "  $(sz "$HOME/Library/Application Support/MobileSync/Backup"(N))  iPhone/iPad backups: manage only in Finder > device > Manage Backups"
+
+FREE1=$(df -k / | tail -1 | awk '{print $4}')
+[ $APPLY = 1 ] && echo && echo "freed $(( (FREE1 - FREE0) / 1024 )) MB per df"
+exit 0
 ```
 
 ### scripts/process-triage.sh
@@ -218,6 +321,14 @@ for P in $(pgrep -f GradleDaemon); do
   printf "  pid=%s up=%s cpu=%s%% tcp-clients=%s\n" $P "$(ps -p $P -o etime= | tr -d ' ')" "$(ps -p $P -o %cpu= | tr -d ' ')" $C
 done
 pgrep -f GradleDaemon >/dev/null || echo "  none"
+echo
+echo "== XCODE / SIMULATORS =="
+if command -v xcrun >/dev/null && xcode-select -p >/dev/null 2>&1; then
+  B=$(xcrun simctl list devices booted 2>/dev/null | grep -c Booted)
+  echo "  booted simulators: $B  (each holds 1-2 GB; 'xcrun simctl shutdown all' frees them)"
+  ps -axo rss=,comm= | awk '{n=$2; sub(".*/","",n)} n ~ /^(Xcode|SourceKitService|XCBBuildService|swift-frontend|lldb-rpc-server|Simulator|launchd_sim|IBAgent-iOS)$/ {r[n]+=$1; c[n]++} END{for (k in r) printf "  %-18s x%-3d %6.0f MB\n", k, c[k], r[k]/1024}'
+  echo "  (SourceKitService over ~2 GB is a known leak: quitting Xcode releases it)"
+else echo "  Xcode not installed"; fi
 echo
 echo "== CHATGPT CODEX helper backlog =="
 R=$(pgrep -f 'codex.*app-server' | head -1)
