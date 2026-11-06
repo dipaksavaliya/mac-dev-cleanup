@@ -132,7 +132,7 @@ embed-scripts.py    re-embeds scripts/ into SKILL.md after you edit a script
 NOTICE              third-party attribution
 ```
 
-## Works well with Mac Sai
+## Using Mac Sai alongside this
 
 [Mac Sai](https://github.com/iliyami/MacSai) is a free, notarized, open-source GUI cleaner with a malware scanner,
 app uninstaller and disk map:
@@ -140,6 +140,18 @@ app uninstaller and disk map:
 ```bash
 brew install --cask mac-sai
 ```
+
+**Warning: review every item before cleaning, and don't empty the Trash straight away.** On a real dev machine, Mac Sai's
+cleanup moved Colima's live VM disks (`~/.colima/_lima/...`) to the Trash, and emptying the Trash deleted them. The VM kept
+running on the deleted files, so everything looked healthy, but stopping it would have lost all Docker images and volumes.
+The same run removed about 10,000 duplicate files, including IDs, salary files and contracts, which can break a backup
+folder's completeness.
+
+- Never select VM or container disks (`~/.colima`, `~/.lima`, Docker, UTM, Parallels), even when they show up as the biggest items.
+- Exclude your code, backup and personal document folders from duplicate cleanups.
+- If files go missing, check `~/Library/Logs/MacClean/operations.log`.
+- Check a VM after any cleaner run: `lsof -p <VM pid> +L1` showing link count 0 on a disk file means it is already deleted.
+  Copy the data out before stopping that VM.
 
 This project adapts its editor and AI-tool cache coverage, leftover and broken login-item checks, project-root
 limits, path guard and Trash-first approach (see [NOTICE](NOTICE)). Two features are deliberately left out because

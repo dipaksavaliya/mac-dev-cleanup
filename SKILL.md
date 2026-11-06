@@ -101,6 +101,18 @@ Documents, Downloads, Desktop, Pictures and iCloud Drive.
 runs its scans. Avoid its Language Files and Universal Binary thinning on a dev machine: both modify
 installed apps. Its Trash Bins module empties the Trash, so review the Trash first.
 
+**Warning: review every item before cleaning, and don't empty the Trash straight away.** On a real dev machine, Mac Sai's
+cleanup moved Colima's live VM disks (`~/.colima/_lima/...`) to the Trash, and emptying the Trash deleted them. The VM kept
+running on the deleted files, so everything looked healthy, but stopping it would have lost all Docker images and volumes.
+The same run removed about 10,000 duplicate files, including IDs, salary files and contracts, which can break a backup
+folder's completeness.
+
+- Never select VM or container disks (`~/.colima`, `~/.lima`, Docker, UTM, Parallels), even when they show up as the biggest items.
+- Exclude your code, backup and personal document folders from duplicate cleanups.
+- If files go missing, check `~/Library/Logs/MacClean/operations.log`.
+- Check a VM after any cleaner run: `lsof -p <VM pid> +L1` showing link count 0 on a disk file means it is already deleted.
+  Copy the data out before stopping that VM.
+
 ## Phase 2: AI-agent worktrees
 
 Coding agents (Claude Code, Codex, etc.) create git worktrees, often a full checkout plus
