@@ -4,7 +4,7 @@ import pathlib
 root = pathlib.Path(__file__).parent
 skill = root / "SKILL.md"
 lang = {".sh": "zsh", ".py": "python"}
-order = ["disk-batch.sh", "ios-clean.sh", "process-triage.sh", "worktree-audit.sh", "reap-codex-helpers.py"]
+order = ["disk-batch.sh", "ios-clean.sh", "extras-clean.sh", "process-triage.sh", "worktree-audit.sh", "reap-codex-helpers.py"]
 blocks = "".join(f"### scripts/{n}\n\n```{lang[pathlib.Path(n).suffix]}\n{(root / 'scripts' / n).read_text()}```\n\n" for n in order)
 t = skill.read_text()
 head, rest = t.split("## Scripts\n", 1)
